@@ -1,0 +1,30 @@
+# Python bytecode & cache
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+
+# Environments
+.venv/
+venv/
+env/
+ENV/
+env.bak/
+venv.bak/
+
+# Environment variables
+.env
+.env.*
+!.env.example
+
+# Databases & SQLite
+*.db
+*.sqlite
+*.sqlite3
+
+# IDEs & OS files
+.DS_Store
+.vscode/
+.idea/
+*.swp
+*.swo
