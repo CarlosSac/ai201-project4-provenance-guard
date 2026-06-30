@@ -62,15 +62,40 @@ CREATE TABLE IF NOT EXISTS audit_log (
     previous_confidence     REAL,
     status                  TEXT,
     timestamp               TEXT,
+    -- Signal scores (populated for analysis events, NULL for appeal events)
+    llm_score               REAL,
+    stylo_score             REAL,
+    signal_gap              REAL,
+    composite_score         REAL,
+    confidence_level        TEXT,
+    classification          TEXT,
     FOREIGN KEY (content_id) REFERENCES submissions(content_id)
 );
 """
+
+
+# Columns added after initial schema release — ALTER TABLE is idempotent
+# (SQLite ignores ADD COLUMN if column already exists via try/except).
+_AUDIT_LOG_MIGRATIONS = [
+    "ALTER TABLE audit_log ADD COLUMN llm_score REAL",
+    "ALTER TABLE audit_log ADD COLUMN stylo_score REAL",
+    "ALTER TABLE audit_log ADD COLUMN signal_gap REAL",
+    "ALTER TABLE audit_log ADD COLUMN composite_score REAL",
+    "ALTER TABLE audit_log ADD COLUMN confidence_level TEXT",
+    "ALTER TABLE audit_log ADD COLUMN classification TEXT",
+]
 
 
 def init_db() -> None:
     """Create tables if they don't already exist. Safe to call on every startup."""
     with get_connection() as conn:
         conn.executescript(_SCHEMA)
+        # Apply any additive migrations — silently skip if column already exists
+        for migration in _AUDIT_LOG_MIGRATIONS:
+            try:
+                conn.execute(migration)
+            except sqlite3.OperationalError:
+                pass  # column already exists
     logger.info("Database initialised at %s", _DB_PATH)
 
 
@@ -102,23 +127,40 @@ def insert_submission(row: dict) -> None:
 
 def insert_audit_event(row: dict) -> None:
     """
-    Insert a row into `audit_log`. Expected keys: content_id, event_type,
-    appeal_id (nullable), reason (nullable), previous_classification (nullable),
-    previous_confidence (nullable), status, timestamp.
+    Insert a row into `audit_log`.
+
+    Required keys: content_id, event_type, status, timestamp
+    Optional (nullable) keys:
+      appeal events:   appeal_id, reason, previous_classification, previous_confidence
+      analysis events: llm_score, stylo_score, signal_gap, composite_score,
+                       confidence_level, classification
     """
     sql = """
         INSERT INTO audit_log (
             content_id, event_type, appeal_id, reason,
             previous_classification, previous_confidence,
-            status, timestamp
+            status, timestamp,
+            llm_score, stylo_score, signal_gap, composite_score,
+            confidence_level, classification
         ) VALUES (
             :content_id, :event_type, :appeal_id, :reason,
             :previous_classification, :previous_confidence,
-            :status, :timestamp
+            :status, :timestamp,
+            :llm_score, :stylo_score, :signal_gap, :composite_score,
+            :confidence_level, :classification
         )
     """
+    # Fill in optional keys with None so the dict always satisfies the query
+    defaults = {
+        "appeal_id": None, "reason": None,
+        "previous_classification": None, "previous_confidence": None,
+        "llm_score": None, "stylo_score": None,
+        "signal_gap": None, "composite_score": None,
+        "confidence_level": None, "classification": None,
+    }
+    defaults.update(row)
     with get_connection() as conn:
-        conn.execute(sql, row)
+        conn.execute(sql, defaults)
     logger.debug("Inserted audit event (%s) for %s", row["event_type"], row["content_id"])
 
 
