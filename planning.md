@@ -59,7 +59,7 @@ flowchart TD
 
 ### Signal 1: LLM Classifier (Groq `llama-3.3-70b-versatile`)
 
-**What it measures:** Holistic semantic patterns, specifically whether the text reads like output from a language model. The LLM is as to evaluate: predictable transition phrases ("moreover", "it is worth noting", "delve into"), uniform paragraph rhythm, absence of personal voice or contradiction, and overly resolved conclusions. These are hallmarks of token-prediction generation, not human drafting.
+The LLM classifier measures Holistic semantic patterns, specifically whether the text reads like output from a language model. The LLM is prompted to evaluate: predictable transition phrases ("moreover", "it is worth noting", "delve into"), uniform paragraph rhythm, absence of personal voice or contradiction, and overly resolved conclusions. These are hallmarks of token-prediction generation, not human drafting.
 
 **Output format:** A single float, `llm_score`, in the range `[0.0, 1.0]`.
 
@@ -95,58 +95,6 @@ Respond with only valid JSON. No explanation outside the JSON object.
 | **Sentence Length Variance** | Structural "burstiness" | Low variance (uniform length) | High variance (short + long sentences mixed) |
 | **Type-Token Ratio (TTR)** | Vocabulary diversity | Moderate-high, artificially consistent | Variable; often lower in casual writing, higher in literary |
 
-**Sub-metric computation:**
-
-```python
-# Sentence Length Variance
-sentences = split_into_sentences(text)
-lengths = [len(s.split()) for s in sentences]
-variance = statistics.variance(lengths) if len(lengths) > 1 else 0.0
-# Normalize: variance > 50 → 0.0 (human), variance < 5 → 1.0 (AI)
-slv_score = max(0.0, min(1.0, 1.0 - (variance / 50.0)))
-
-# Type-Token Ratio
-words = tokenize(text.lower())
-ttr = len(set(words)) / len(words) if words else 0.0
-# TTR in [0.4, 0.6] is AI-typical (neither too rich nor too poor)
-# Score: distance from the "AI band" [0.4, 0.6]
-ttr_score = 1.0 - min(abs(ttr - 0.5) / 0.2, 1.0)
-
-# Combined stylometric score (equal weight)
-stylo_score = (slv_score + ttr_score) / 2.0
-```
-
-**Output format:** A single float, `stylo_score`, in `[0.0, 1.0]` where `1.0` = AI-likely.
-
-**Minimum text length:** If `len(text.split()) < 50`, the stylometric signal is marked as unreliable (`stylo_reliable = False`) because statistical metrics lack sufficient sample size.
-
----
-
-### Signal Combination
-
-```python
-# Check reliability based on text length
-stylo_reliable = len(text.split()) >= 50
-
-if stylo_reliable:
-    # Standard combined case
-    composite_score = (0.6 * llm_score) + (0.4 * stylo_score)
-    signal_gap = abs(llm_score - stylo_score)
-    
-    # If signals disagree by more than 0.35, flag as uncertain regardless of composite
-    if signal_gap > 0.35:
-        confidence_level = "low"   # → triggers Uncertain label
-    elif composite_score >= 0.75 or composite_score <= 0.25:
-        confidence_level = "high"
-    else:
-        confidence_level = "medium"
-else:
-    # Short text case: rely solely on LLM
-    composite_score = llm_score
-    signal_gap = None
-    confidence_level = "medium"  # Can't be high confidence without a second signal
-```
-
 ---
 
 ## 2. Uncertainty Representation
@@ -155,26 +103,15 @@ else:
 
 A composite score of `0.6` means: the weighted signal combination leans AI-generated, but not strongly. The LLM might score it `0.65` and stylometrics score it `0.52`. This is the range where the system has a directional lean but not enough evidence to assert high confidence. Showing "AI-generated" at 0.6 to a non-technical user would be misleading, as it implies a certainty the data doesn't support.
 
-### Score-to-label mapping
-
-| Composite Score | Signal Gap | `confidence_level` | `classification` | Label Variant |
-| --- | --- | --- | --- | --- |
-| ≥ 0.75 | ≤ 0.35 | `high` | `ai_generated` | High-confidence AI |
-| ≤ 0.25 | ≤ 0.35 | `high` | `human_written` | High-confidence Human |
-| Any | &gt; 0.35 | `low` | `uncertain` | Uncertain |
-| 0.26 to 0.74 | ≤ 0.35 | `medium` | `uncertain` | Uncertain |
-
-**Thresholds in plain English:**
+**Thresholds:**
 
 - **AI confident zone:** composite ≥ 0.75 AND signals agree (gap ≤ 0.35)
 - **Human confident zone:** composite ≤ 0.25 AND signals agree (gap ≤ 0.35)
 - **Uncertain zone:** everything else: the middle band OR any disagreement between signals
 
-The uncertain zone is intentionally wide. A system that is uncertain 40% of the time is being honest; a system that is uncertain 5% of the time is probably overconfident.
-
 ### Confidence score in the API response
 
-The API returns `confidence_score` as the raw composite float (e.g., `0.62`), not a category. The label variant is determined by the mapping table above. This lets consuming platforms display "62% confidence" if they want, while the label text handles the interpretation for non-technical readers.
+The API returns `confidence_score` as the raw composite float, not a category. The label variant is determined by the mapping table above. This lets consuming platforms display "62% confidence" if they want, while the label text handles the interpretation for non-technical readers.
 
 ---
 
@@ -208,8 +145,8 @@ These are the exact strings the system produces. The `label_text` field in the A
 
 ### Label display rules
 
-- All three variants are plain English with no technical jargon.
-- The `confidence_score` float is exposed separately in the API; the label text does not include the raw number (e.g., "62%"), because raw numbers communicate false precision to non-technical readers.
+- All three variants are plain English.
+- The `confidence_score` float is exposed separately in the API; the label text does not include the raw number (e.g., "62%").
 - Platforms may display the score alongside the label if they choose; the label text stands on its own.
 
 ---
@@ -222,14 +159,6 @@ Any creator whose content has received a classification. The appeal endpoint is 
 
 ### What they provide
 
-```json
-POST /api/appeal
-{
-  "content_id": "uuid of the original submission (required)",
-  "reason": "free-text explanation from the creator (required, min 10 chars)"
-}
-```
-
 The `reason` field is unstructured on purpose. Creators might explain: that they wrote in a second language, that their style is deliberately minimal, that they have draft history, or that they use AI tools as an editor but wrote the original. All of this is useful context for a human reviewer.
 
 ### What the system does on receipt
@@ -239,31 +168,8 @@ The `reason` field is unstructured on purpose. Creators might explain: that they
 3. **Update** `submissions.status` from `active` → `under_review`.
 4. **Insert** a new row into `audit_log`:
 
-```json
-{
-  "id": "auto-increment",
-  "content_id": "original uuid",
-  "event_type": "appeal",
-  "appeal_id": "new uuid",
-  "reason": "creator's text",
-  "previous_classification": "ai_generated",
-  "previous_confidence": 0.81,
-  "status": "under_review",
-  "timestamp": "ISO 8601"
-}
-```
 
-5. **Return** to the caller:
-
-```json
-{
-  "appeal_id": "uuid",
-  "content_id": "uuid",
-  "status": "under_review",
-  "message": "Appeal submitted. Your content has been flagged for human review. The label may be updated once a reviewer has assessed your appeal.",
-  "timestamp": "ISO 8601"
-}
-```
+5) **Return** to the caller:
 
 ### What a human reviewer sees (GET /api/log)
 
@@ -302,74 +208,13 @@ This gives a reviewer the full picture: what the system decided, how confident i
 
 **Scenario:** A writer drafts a blog post, then uses an AI tool to copyedit for grammar and flow. The ideas and structure are human; the final prose is AI-polished. The resulting text has human-generated content architecture but AI-smoothed sentence-level delivery.
 
-**What goes wrong:** This is a genuinely ambiguous case: neither "AI-generated" nor "human-written" is entirely accurate. The LLM signal will likely detect the AI polish (score ≈ 0.55 to 0.65). The stylometric signal may come in lower if the human's original structure still shows variance (score ≈ 0.40 to 0.55). Composite ≈ 0.50 to 0.60, landing in the Uncertain zone.
+**What goes wrong:** This is an ambiguous case: neither "AI-generated" nor "human-written" is entirely accurate. The LLM signal will likely detect the AI polish (score ≈ 0.55 to 0.65). The stylometric signal may come in lower if the human's original structure still shows variance (score ≈ 0.40 to 0.55). Composite ≈ 0.50 to 0.60, landing in the Uncertain zone.
 
 **Why this is actually the right outcome:** The Uncertain label is the honest answer here. The system correctly identifies that attribution is ambiguous rather than forcing a binary it can't support. This is by design: the Uncertain zone exists precisely for co-creation scenarios where the human/AI boundary is real but blurry.
 
 ---
 
-## 6. API Surface
-
-### `POST /api/analyze`
-
-| Field | Type | Required | Notes |
-| --- | --- | --- | --- |
-| `content` | string | ✅ | The text to analyze |
-| `title` | string | ❌ | Stored but not analyzed |
-| `author_id` | string | ❌ | Stored for audit trail |
-
-**Response (200):**
-
-```json
-{
-  "content_id": "uuid-v4",
-  "classification": "ai_generated | human_written | uncertain",
-  "confidence_score": 0.81,
-  "confidence_level": "high | medium | low",
-  "transparency_label": "<one of the three label variants above>",
-  "signals": {
-    "llm_score": 0.85,
-    "stylo_score": 0.75,
-    "signal_gap": 0.10,
-    "text_length_words": 312,
-    "stylo_reliable": true
-  },
-  "status": "active",
-  "timestamp": "2026-06-30T00:00:00Z"
-}
-```
-
-**Errors:** 400 (missing content), 429 (rate limit), 500 (Groq failure)
-
----
-
-### `POST /api/appeal`
-
-| Field | Type | Required | Notes |
-| --- | --- | --- | --- |
-| `content_id` | string | ✅ | UUID from original submission |
-| `reason` | string | ✅ | Min 10 chars |
-
-**Response (200):** `appeal_id`, `content_id`, `status: under_review`, `message`, `timestamp`
-
-**Errors:** 400 (missing fields / reason too short), 404 (content_id not found), 409 (already under review), 429 (rate limit)
-
----
-
-### `GET /api/log`
-
-| Param | Type | Default | Notes |
-| --- | --- | --- | --- |
-| `content_id` | string | \- | Filter to one submission |
-| `limit` | int | 50 | Max entries returned |
-
-**Response (200):** `{ "entries": [...], "total": N }`
-
-Each entry includes `event_type` (`analysis` or `appeal`), all signal scores for analysis events, and `reason` for appeal events.
-
----
-
-## 7. Rate Limiting
+## 6. Rate Limiting
 
 | Endpoint | Limit | Reasoning |
 | --- | --- | --- |
@@ -379,61 +224,9 @@ Each entry includes `event_type` (`analysis` or `appeal`), all signal scores for
 
 ---
 
-## 8. Database Schema
-
-```sql
-CREATE TABLE submissions (
-    content_id    TEXT PRIMARY KEY,
-    author_id     TEXT,
-    title         TEXT,
-    content_snippet TEXT,   -- first 500 chars for audit display
-    classification TEXT,    -- 'ai_generated' | 'human_written' | 'uncertain'
-    confidence_score REAL,
-    confidence_level TEXT,  -- 'high' | 'medium' | 'low'
-    llm_score     REAL,
-    stylo_score   REAL,
-    signal_gap    REAL,
-    stylo_reliable INTEGER, -- boolean (0/1)
-    transparency_label TEXT,
-    status        TEXT DEFAULT 'active', -- 'active' | 'under_review'
-    created_at    TEXT
-);
-
-CREATE TABLE audit_log (
-    id            INTEGER PRIMARY KEY AUTOINCREMENT,
-    content_id    TEXT,
-    event_type    TEXT,     -- 'analysis' | 'appeal'
-    appeal_id     TEXT,
-    reason        TEXT,
-    previous_classification TEXT,
-    previous_confidence REAL,
-    status        TEXT,
-    timestamp     TEXT,
-    FOREIGN KEY (content_id) REFERENCES submissions(content_id)
-);
-```
-
----
-
-## 9. File Structure
-
-```
-provenance-guard/
-├── app.py              # Flask app, route definitions, rate limiting
-├── pipeline.py         # Signal 1 (Groq) + Signal 2 (stylometrics) + aggregation
-├── database.py         # SQLite init, insert/query helpers
-├── labels.py           # Transparency label logic (score → label text)
-├── requirements.txt
-├── .env                # GROQ_API_KEY (gitignored)
-├── planning.md         # this document
-└── README.md
-```
-
----
-
 ## AI Tool Plan
 
-This section defines exactly what context to give an AI code-generation tool at each milestone, what to ask for, and how to verify the output before moving forward. The architecture diagram and relevant spec sections travel with each prompt.
+This section defines exactly what context to given to the AI code-generation tool (Claude) at each milestone, what to ask for, and how to verify the output before moving forward. The architecture diagram and relevant spec sections should be given with each prompt.
 
 ---
 
@@ -443,9 +236,6 @@ This section defines exactly what context to give an AI code-generation tool at 
 
 - `## Architecture` (both Mermaid diagrams + narrative)
 - `## 1. Detection Signals`: Signal 1 subsection only (Groq prompt text, output format, fallback behavior)
-- `## 6. API Surface`: `POST /api/analyze` request/response shapes
-- `## 8. Database Schema`: `submissions` and `audit_log` table definitions
-- `## 9. File Structure`
 
 **What to ask the AI tool to generate:**
 
@@ -467,7 +257,7 @@ This section defines exactly what context to give an AI code-generation tool at 
 - `## Architecture` (both diagrams + narrative)
 - `## 1. Detection Signals`: Signal 2 subsection (both sub-metrics with normalization formulas, minimum text length check)
 - `## 1. Detection Signals`: Signal Combination block (reliability checks, weighting logic, signal gap check)
-- `## 2. Uncertainty Representation` (threshold table, what a score of 0.6 means)
+- `## 2. Uncertainty Representation`
 
 **What to ask the AI tool to generate:**
 
@@ -477,9 +267,8 @@ This section defines exactly what context to give an AI code-generation tool at 
 
 1. Run both signals on a GPT-generated paragraph: expect `composite_score` &gt;= 0.72 and `confidence_level = 'high'`.
 2. Run both signals on a stream-of-consciousness human passage: expect `composite_score` &lt;= 0.35 and `confidence_level = 'high'`.
-3. Manually force `llm_score = 0.8, stylo_score = 0.3` (with a text &gt;= 50 words) and confirm `signal_gap = 0.5 > 0.35` triggers `confidence_level = 'low'` and `classification = 'uncertain'`.
-4. Run on a very short text (under 50 words): verify it bypasses stylometrics, returns `stylo_reliable = False`, and sets `composite_score` to the `llm_score` with `confidence_level = 'medium'`.
-5. Run on an ESL academic paragraph: expect result in the uncertain band to validate the edge case from Section 5.
+3. Run on a very short text (under 50 words): verify it bypasses stylometrics, returns `stylo_reliable = False`, and sets `composite_score` to the `llm_score` with `confidence_level = 'medium'`.
+4. Run on an ESL academic paragraph: expect result in the uncertain band to validate the edge case from Section 5.
 
 ---
 
@@ -490,8 +279,7 @@ This section defines exactly what context to give an AI code-generation tool at 
 - `## Architecture` (both diagrams + narrative)
 - `## 3. Transparency Labels` (all three verbatim label variants + display rules)
 - `## 4. Appeals Workflow` (who can appeal, request fields, status changes, exact audit log record structure, reviewer view)
-- `## 6. API Surface`: `POST /api/appeal` and `GET /api/log` shapes
-- `## 7. Rate Limiting` table
+- `## 6. Rate Limiting` 
 
 **What to ask the AI tool to generate:**
 
@@ -502,5 +290,4 @@ This section defines exactly what context to give an AI code-generation tool at 
 1. Call `generate_label('ai_generated', 'high')`, confirm it returns Variant A verbatim.
 2. Call `generate_label('human_written', 'high')`, confirm Variant B verbatim.
 3. Call `generate_label('uncertain', 'low')`, confirm Variant C verbatim.
-4. Submit test content via `POST /api/analyze`, capture `content_id`, call `POST /api/appeal` with it, then query `GET /api/log?content_id=<id>`, confirm two entries exist: one `analysis` event and one `appeal` event with `status: under_review`.
-5. Call `POST /api/appeal` again with the same `content_id`, confirm 409 is returned.
+4. Call `POST /api/appeal` again with the same `content_id`, confirm 409 is returned.
