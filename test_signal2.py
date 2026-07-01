@@ -1,5 +1,5 @@
 """
-test_signal2.py — Standalone tests for Signal 2 (stylometrics) and aggregate_signals.
+test_signal2.py: Standalone tests for Signal 2 (stylometrics) and aggregate_signals.
 No network calls. Run with:  python test_signal2.py
 """
 
@@ -43,7 +43,7 @@ HUMAN_TEXT = """\
 I still remember the first time I got completely lost hiking. I was maybe 22, dragged
 a heavy pack up a trail that just... stopped. No marker. Sat on a rock for a good
 hour eating stale crackers, genuinely unsure if I should go back or push forward.
-Chose forward. Found a ridge, then a meadow, then the right path again — total
+Chose forward. Found a ridge, then a meadow, then the right path again: total
 accident, honestly. Would I do it differently? Probably not.
 The point is you learn stuff when the plan falls apart. My compass was busted anyway.
 And the crackers were terrible. Why do I keep buying those? They taste like cardboard
@@ -62,7 +62,7 @@ In conclusion, it is essential that all citizens contribute to conservation effo
 """
 
 # ---------------------------------------------------------------------------
-# Section 1: run_stylo_signal — basic output shape
+# Section 1: run_stylo_signal: basic output shape
 # ---------------------------------------------------------------------------
 print("\n=== run_stylo_signal: output shape ===")
 r = run_stylo_signal(AI_TEXT)
@@ -73,7 +73,7 @@ check("stylo_score in [0,1]", 0.0 <= r["stylo_score"] <= 1.0)
 check("stylo_reliable=True for AI_TEXT (>50 words)", r["stylo_reliable"] is True)
 
 # ---------------------------------------------------------------------------
-# Section 2: AI text — expects high stylo_score (uniform sentences, AI-band TTR)
+# Section 2: AI text: expects high stylo_score (uniform sentences, AI-band TTR)
 # ---------------------------------------------------------------------------
 print("\n=== run_stylo_signal on AI text ===")
 r_ai = run_stylo_signal(AI_TEXT)
@@ -83,7 +83,7 @@ check("AI text stylo_score >= 0.45 (AI-leaning)", r_ai["stylo_score"] >= 0.45,
       f"got {r_ai['stylo_score']}")
 
 # ---------------------------------------------------------------------------
-# Section 3: Human text — expects lower stylo_score (more varied sentences)
+# Section 3: Human text: expects lower stylo_score (more varied sentences)
 # ---------------------------------------------------------------------------
 print("\n=== run_stylo_signal on human text ===")
 r_hum = run_stylo_signal(HUMAN_TEXT)
@@ -94,7 +94,7 @@ check("Human text stylo_score < AI text stylo_score (relative)",
       f"human={r_hum['stylo_score']} vs ai={r_ai['stylo_score']}")
 
 # ---------------------------------------------------------------------------
-# Section 4: Short text — stylo_reliable must be False
+# Section 4: Short text: stylo_reliable must be False
 # ---------------------------------------------------------------------------
 print("\n=== run_stylo_signal on short text (<50 words) ===")
 r_short = run_stylo_signal(SHORT_TEXT)
@@ -102,15 +102,15 @@ print(f"  stylo_score={r_short['stylo_score']}  reliable={r_short['stylo_reliabl
 check("Short text: stylo_reliable=False", r_short["stylo_reliable"] is False)
 
 # ---------------------------------------------------------------------------
-# Section 5: ESL academic text — signal interesting to observe
+# Section 5: ESL academic text: signal interesting to observe
 # ---------------------------------------------------------------------------
 print("\n=== run_stylo_signal on ESL text ===")
 r_esl = run_stylo_signal(ESL_TEXT)
 print(f"  stylo_score={r_esl['stylo_score']}  slv={r_esl['slv_score']}  ttr_score={r_esl['ttr_score']}")
-print(f"  [INFO] ESL score noted — both signals may agree as AI-leaning")
+print(f"  [INFO] ESL score noted: both signals may agree as AI-leaning")
 
 # ---------------------------------------------------------------------------
-# Section 6: aggregate_signals — spec threshold verification
+# Section 6: aggregate_signals: spec threshold verification
 # ---------------------------------------------------------------------------
 print("\n=== aggregate_signals: threshold verification ===")
 
