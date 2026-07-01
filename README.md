@@ -2,6 +2,8 @@
 
 A backend API that classifies submitted text as AI-generated, human-written, or uncertain, designed to help creative platforms surface authorship transparency labels and handle creator appeals.
 
+**Video Demo:** <https://youtu.be/r14WStbbtzM>
+
 ---
 
 ## Quick Start
@@ -385,7 +387,7 @@ This compares actual TTR against the *expected* TTR for the given text length, a
 
 **What it produced:** A function that correctly implemented the SLV sub-metric, but faithfully translated the spec's fixed-band TTR formula without flagging that it would produce zero for all real inputs at paragraph scale.
 
-**What I revised:** After running the function on all four milestone test inputs and seeing `ttr_score = 0.0` in every case, I investigated by printing the raw TTR values (all 0.86–0.93 at 40–56 words). I then diagnosed that the fixed band targets long-form text and replaced the formula with a length-gated Herdan's law baseline. The AI produced what was asked, a faithful translation of the spec, but the spec itself had an empirical gap that required testing to surface. 
+**What I revised:** After running the function on all four milestone test inputs and seeing `ttr_score = 0.0` in every case, I investigated by printing the raw TTR values (all 0.86–0.93 at 40–56 words). I then diagnosed that the fixed band targets long-form text and replaced the formula with a length-gated Herdan's law baseline. The AI produced what was asked, a faithful translation of the spec, but the spec itself had an empirical gap that required testing to surface.
 
 ---
 
@@ -447,19 +449,3 @@ Four test inputs were run during M4 calibration, spanning the full output range:
 | Clearly human (casual ramen review) | 0.12 | `human_written / high` |
 
 The spread from 0.12 to 0.85 across qualitatively different inputs confirms the scoring produces meaningful variation. The borderline case scoring `uncertain` (not AI) despite a high composite is the gap check working correctly.
-
----
-
-## File Structure
-
-```
-provenance-guard/
-├── app.py          # Flask routes, rate limiting
-├── pipeline.py     # Signal 1 (Groq) + Signal 2 (stylometrics) + aggregation
-├── database.py     # SQLite init, insert/query helpers
-├── labels.py       # Transparency label logic (score → label text)
-├── requirements.txt
-├── .env            # GROQ_API_KEY (gitignored)
-├── planning.md     # Architecture and design document
-└── README.md
-```
